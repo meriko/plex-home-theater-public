@@ -51,7 +51,9 @@ typedef struct {
     HTTPAuthState proxy_auth_state;
     char *headers;
     int willclose;          /**< Set if the server correctly handles Connection: close and will close the connection after feeding us the content. */
+    int seekable;           /**< Control seekability, 0 = disable, 1 = enable, -1 = probe. */
     int chunked_post;
+    char *cookies;          ///< holds newline (\n) delimited Set-Cookie header field values (without the "Set-Cookie: " field name)
 } HTTPContext;
 
 #define OFFSET(x) offsetof(HTTPContext, x)
@@ -59,9 +61,11 @@ typedef struct {
 #define E AV_OPT_FLAG_ENCODING_PARAM
 #define DEC AV_OPT_FLAG_DECODING_PARAM
 static const AVOption options[] = {
+{"seekable", "Control seekability of connection", OFFSET(seekable), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 1, D },
 {"chunked_post", "use chunked transfer-encoding for posts", OFFSET(chunked_post), AV_OPT_TYPE_INT, {.dbl = 1}, 0, 1, E },
 {"headers", "custom HTTP headers, can override built in default headers", OFFSET(headers), AV_OPT_TYPE_STRING, { 0 }, 0, 0, D|E },
 {"user-agent", "override User-Agent header", OFFSET(user_agent), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, DEC},
+{"cookies", "set cookies to be sent in applicable future requests, use newline delimited Set-Cookie HTTP field value syntax", OFFSET(cookies), AV_OPT_TYPE_STRING, {0}, 0, 0, 0 },
 {NULL}
 };
 #define HTTP_CLASS(flavor)\
@@ -184,7 +188,10 @@ static int http_open(URLContext *h, const char *uri, int flags)
 {
     HTTPContext *s = h->priv_data;
 
-    h->is_streamed = 1;
+    if( s->seekable == 1 )
+        h->is_streamed = 0;
+    else
+        h->is_streamed = 1;
 
     s->filesize = -1;
     av_strlcpy(s->location, uri, sizeof(s->location));
@@ -293,8 +300,9 @@ static int process_line(URLContext *h, char *line, int line_count,
                 if ((slash = strchr(p, '/')) && strlen(slash) > 0)
                     s->filesize = atoll(slash+1);
             }
-            h->is_streamed = 0; /* we _can_ in fact seek */
-        } else if (!av_strcasecmp(tag, "Accept-Ranges") && !strncmp(p, "bytes", 5)) {
+            if (s->seekable == -1 && s->filesize != 2147483647)
+                h->is_streamed = 0; /* we _can_ in fact seek */
+        } else if (!av_strcasecmp(tag, "Accept-Ranges") && !strncmp(p, "bytes", 5) && s->seekable == -1) {
             h->is_streamed = 0;
         } else if (!av_strcasecmp (tag, "Transfer-Encoding") && !av_strncasecmp(p, "chunked", 7)) {
             s->filesize = -1;
@@ -308,9 +316,120 @@ static int process_line(URLContext *h, char *line, int line_count,
         } else if (!av_strcasecmp (tag, "Connection")) {
             if (!strcmp(p, "close"))
                 s->willclose = 1;
-        }
+        } else if (!av_strcasecmp (tag, "Set-Cookie")) {
+            if (!s->cookies) {
+                if (!(s->cookies = av_strdup(p)))
+                    return AVERROR(ENOMEM);
+            } else {
+                char *tmp = s->cookies;
+                size_t str_size = strlen(tmp) + strlen(p) + 2;
+                if (!(s->cookies = av_malloc(str_size))) {
+                    s->cookies = tmp;
+                    return AVERROR(ENOMEM);
+                }
+                snprintf(s->cookies, str_size, "%s\n%s", tmp, p);
+                av_free(tmp);
+            }
+         }
     }
     return 1;
+}
+
+/**
+ * Create a string containing cookie values for use as a HTTP cookie header
+ * field value for a particular path and domain from the cookie values stored in
+ * the HTTP protocol context. The cookie string is stored in *cookies.
+ *
+ * @return a negative value if an error condition occurred, 0 otherwise
+ */
+static int get_cookies(HTTPContext *s, char **cookies, const char *path,
+                       const char *domain)
+{
+    // cookie strings will look like Set-Cookie header field values.  Multiple
+    // Set-Cookie fields will result in multiple values delimited by a newline
+    int ret = 0;
+    char *next, *cookie, *set_cookies = av_strdup(s->cookies), *cset_cookies = set_cookies;
+
+    if (!set_cookies) return AVERROR(EINVAL);
+
+    *cookies = NULL;
+    while ((cookie = av_strtok(set_cookies, "\n", &next))) {
+        int domain_offset = 0;
+        char *param, *next_param, *cdomain = NULL, *cpath = NULL, *cvalue = NULL;
+        set_cookies = NULL;
+
+        while ((param = av_strtok(cookie, "; ", &next_param))) {
+            cookie = NULL;
+            if        (!av_strncasecmp("path=",   param, 5)) {
+                av_free(cpath);
+                cpath = av_strdup(&param[5]);
+            } else if (!av_strncasecmp("domain=", param, 7)) {
+                av_free(cdomain);
+                cdomain = av_strdup(&param[7]);
+            } else if (!av_strncasecmp("secure",  param, 6) ||
+                       !av_strncasecmp("comment", param, 7) ||
+                       !av_strncasecmp("max-age", param, 7) ||
+                       !av_strncasecmp("version", param, 7)) {
+                // ignore Comment, Max-Age, Secure and Version
+            } else {
+                av_free(cvalue);
+                cvalue = av_strdup(param);
+            }
+        }
+        if (!cdomain)
+            cdomain = av_strdup(domain);
+            
+        // ensure all of the necessary values are valid
+        if (!cdomain || !cpath || !cvalue) {
+            av_log(s, AV_LOG_WARNING,
+                   "Invalid cookie found, no value, path or domain specified\n");
+            goto done_cookie;
+        }
+
+        // check if the request path matches the cookie path
+        if (av_strncasecmp(path, cpath, strlen(cpath)))
+            goto done_cookie;
+
+        // the domain should be at least the size of our cookie domain
+        domain_offset = strlen(domain) - strlen(cdomain);
+        if (domain_offset < 0)
+            goto done_cookie;
+
+        // match the cookie domain
+        if (av_strcasecmp(&domain[domain_offset], cdomain))
+            goto done_cookie;
+
+        // cookie parameters match, so copy the value
+        if (!*cookies) {
+            if (!(*cookies = av_strdup(cvalue))) {
+                ret = AVERROR(ENOMEM);
+                goto done_cookie;
+            }
+        } else {
+            char *tmp = *cookies;
+            size_t str_size = strlen(cvalue) + strlen(*cookies) + 3;
+            if (!(*cookies = av_malloc(str_size))) {
+                ret = AVERROR(ENOMEM);
+                goto done_cookie;
+            }
+            snprintf(*cookies, str_size, "%s; %s", tmp, cvalue);
+            av_free(tmp);
+        }
+
+        done_cookie:
+        av_free(cdomain);
+        av_free(cpath);
+        av_free(cvalue);
+        if (ret < 0) {
+            if (*cookies) av_freep(cookies);
+            av_free(cset_cookies);
+            return ret;
+        }
+    }
+
+    av_free(cset_cookies);
+
+    return 0;
 }
 
 static inline int has_header(const char *str, const char *header)
@@ -351,7 +470,10 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
     if (!has_header(s->headers, "\r\nAccept: "))
         len += av_strlcpy(headers + len, "Accept: */*\r\n",
                           sizeof(headers) - len);
-    if (!has_header(s->headers, "\r\nRange: ") && !post)
+    // Note: we send this on purpose even when s->off is 0 when we're probing,
+    // since it allows us to detect more reliably if a (non-conforming)
+    // server supports seeking by analysing the reply headers.
+    if (!has_header(s->headers, "\r\nRange: ") && !post && (s->off > 0 || s->seekable == -1))
         len += av_strlcatf(headers + len, sizeof(headers) - len,
                            "Range: bytes=%"PRId64"-\r\n", s->off);
     if (!has_header(s->headers, "\r\nConnection: "))
@@ -360,6 +482,15 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
     if (!has_header(s->headers, "\r\nHost: "))
         len += av_strlcatf(headers + len, sizeof(headers) - len,
                            "Host: %s\r\n", hoststr);
+    if (!has_header(s->headers, "\r\nCookie: ") && s->cookies) {
+        char *cookies = NULL;
+        if (!get_cookies(s, &cookies, path, hoststr)) {
+            len += av_strlcatf(headers + len, sizeof(headers) - len,
+                               "Cookie: %s\r\n", cookies);
+            av_free(cookies);
+            
+        }
+    }
 
     /* now add in custom headers */
     if (s->headers)
@@ -606,7 +737,10 @@ static int http_proxy_open(URLContext *h, const char *uri, int flags)
     HTTPAuthType cur_auth_type;
     char *authstr;
 
-    h->is_streamed = 1;
+    if( s->seekable == 1 )
+        h->is_streamed = 0;
+    else
+        h->is_streamed = 1;
 
     av_url_split(NULL, 0, auth, sizeof(auth), hostname, sizeof(hostname), &port,
                  pathbuf, sizeof(pathbuf), uri);

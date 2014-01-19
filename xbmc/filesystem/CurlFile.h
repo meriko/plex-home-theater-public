@@ -83,6 +83,9 @@ namespace XFILE
       static bool GetHttpHeader(const CURL &url, CHttpHeader &headers);
       static bool GetMimeType(const CURL &url, CStdString &content, CStdString useragent="");
 
+      /* static function that will get cookies stored by CURL in RFC 2109 format */
+      static bool GetCookies(const CURL &url, std::string &cookies);
+
       /* PLEX */
       bool Put(const CStdString& strURL, CStdString& strHTML);
       bool Delete(const CStdString& strURL, CStdString& strHTML);
