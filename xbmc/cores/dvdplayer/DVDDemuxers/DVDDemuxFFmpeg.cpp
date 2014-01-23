@@ -647,6 +647,7 @@ AVDictionary *CDVDDemuxFFmpeg::GetFFMpegOptionsFromURL(const CURL &url)
     url.GetProtocolOptions(protocolOptions);
     std::string headers;
     bool hasUserAgent = false;
+    bool hasCookies = false;
     for(std::map<CStdString, CStdString>::const_iterator it = protocolOptions.begin(); it != protocolOptions.end(); ++it)
     {
       const CStdString &name = it->first;
@@ -659,6 +660,12 @@ AVDictionary *CDVDDemuxFFmpeg::GetFFMpegOptionsFromURL(const CURL &url)
         m_dllAvUtil.av_dict_set(&options, "user-agent", value.c_str(), 0);
         hasUserAgent = true;
       }
+      else if (name.Equals("Cookie"))
+      {
+        CLog::Log(LOGDEBUG, "Passing custom cookies to ffmpeg: %s", value.c_str());
+        m_dllAvUtil.av_dict_set(&options, "cookies", value.c_str(), 0);
+        hasCookies = true;
+      }
       else if (!name.Equals("auth") && !name.Equals("Encoding"))
         // all other protocol options can be added as http header.
         headers.append(name).append(": ").append(value).append("\r\n");
@@ -670,9 +677,15 @@ AVDictionary *CDVDDemuxFFmpeg::GetFFMpegOptionsFromURL(const CURL &url)
     if (!headers.empty())
       m_dllAvUtil.av_dict_set(&options, "headers", headers.c_str(), 0);
       
-    std::string cookies;
-    if (XFILE::CCurlFile::GetCookies(url, cookies))
-      m_dllAvUtil.av_dict_set(&options, "cookies", cookies.c_str(), 0);
+    if (!hasCookies)
+    {
+      std::string cookies;
+      if (XFILE::CCurlFile::GetCookies(url, cookies))
+      {
+        CLog::Log(LOGDEBUG, "Retrieved cookies to pass to ffmpeg: %s", cookies.c_str());
+        m_dllAvUtil.av_dict_set(&options, "cookies", cookies.c_str(), 0);
+      }
+    }
       
   }
   return options;
