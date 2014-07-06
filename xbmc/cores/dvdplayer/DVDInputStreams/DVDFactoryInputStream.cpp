@@ -89,7 +89,8 @@ CDVDInputStream* CDVDFactoryInputStream::CreateInputStream(IDVDPlayer* pPlayer, 
        || file.substr(0, 6) == "mms://"
        || file.substr(0, 7) == "mmst://"
        || file.substr(0, 7) == "mmsh://"
-       || (item.IsInternetStream() && item.IsType(".m3u8")))
+       || (item.IsInternetStream() && item.IsType(".m3u8"))
+       || (item.IsInternetStream() && item.IsType(".f4m")))
     return new CDVDInputStreamFFmpeg();
   else if(file.substr(0, 8) == "sling://"
        || file.substr(0, 7) == "myth://"

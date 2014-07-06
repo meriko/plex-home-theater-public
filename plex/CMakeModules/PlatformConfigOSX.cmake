@@ -48,7 +48,7 @@ if(DEFINED XCODE_VERSION)
 endif()
 
 ######################### Compiler CFLAGS
-set(EXTRA_CFLAGS "-mmacosx-version-min=10.6 -isysroot ${OSX_SDK_PATH}")
+set(EXTRA_CFLAGS "-mmacosx-version-min=10.6 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.9.sdk")
 
 ######################### CHECK LIBRARIES / FRAMEWORKS
 #### Frameworks for MacOSX
@@ -134,7 +134,7 @@ set(non_link_libs
   SDL_image
 )
 
-set(system_libs iconv stdc++)  
+set(system_libs iconv stdc++ xml2)  
 
 # go through all the libs we need and find them plus set some good variables
 foreach(lib ${external_libs})

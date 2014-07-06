@@ -208,6 +208,7 @@ External library support:
   --enable-mlib            enable Sun medialib [no]
   --enable-openssl         enable openssl [no]
   --enable-zlib            enable zlib [autodetect]
+  --disable-xml2           disable XML parsing using the C library libxml2 [autodetect]
 
 Advanced options (experts only):
   --cross-prefix=PREFIX    use PREFIX for compilation tools [$cross_prefix]
@@ -1086,6 +1087,7 @@ CONFIG_LIST="
     vdpau
     version3
     x11grab
+    xml2
     zlib
 "
 
@@ -1579,6 +1581,7 @@ avisynth_demuxer_deps="avisynth"
 dirac_demuxer_select="dirac_parser"
 eac3_demuxer_select="ac3_parser"
 flac_demuxer_select="flac_parser"
+hds_demuxer_select="xml2"
 ipod_muxer_select="mov_muxer"
 libnut_demuxer_deps="libnut"
 libnut_muxer_deps="libnut"
@@ -3069,6 +3072,11 @@ check_header asm/types.h
 
 disabled  zlib || check_lib   zlib.h      zlibVersion -lz   || disable  zlib
 disabled bzlib || check_lib2 bzlib.h BZ2_bzlibVersion -lbz2 || disable bzlib
+
+#disabled xml2 || {
+#    check_pkg_config libxml-2.0 libxml2/libxml/xmlversion.h xmlCheckVersion &&
+#    require_pkg_config libxml-2.0 libxml2/libxml/xmlversion.h xmlCheckVersion
+#    } || disable xml2
 
 # check for VDA header
 if ! disabled vda; then

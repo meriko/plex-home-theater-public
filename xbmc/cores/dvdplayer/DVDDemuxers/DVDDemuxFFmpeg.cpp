@@ -323,6 +323,7 @@ bool CDVDDemuxFFmpeg::Open(CDVDInputStream* pInput)
       m_pInput->SetError(GetErrorString(result));
       /* END PLEX */
       CLog::Log(LOGDEBUG, "Error, could not open file %s", strFile.c_str());
+      CLog::Log(LOGERROR, "%s - error: %s", __FUNCTION__, GetErrorString(m_dllAvFormat.avformat_open_input(&m_pFormatContext, strFile.c_str(), iformat, &options)).c_str());
       Dispose();
       m_dllAvUtil.av_dict_free(&options);
       return false;
@@ -347,7 +348,10 @@ bool CDVDDemuxFFmpeg::Open(CDVDInputStream* pInput)
       bool trySPDIFonly = (m_pInput->GetContent() == "audio/x-spdif-compressed");
 
       if (!trySPDIFonly)
+      {
+        CLog::Log(LOGDEBUG, "%s - letting ffmpeg decide which demuxer to open for, %s", __FUNCTION__, strFile.c_str());
         m_dllAvFormat.av_probe_input_buffer(m_ioContext, &iformat, strFile.c_str(), NULL, 0, 0);
+      }
 
       // Use the more low-level code in case we have been built against an old
       // FFmpeg without the above av_probe_input_buffer(), or in case we only
@@ -458,6 +462,7 @@ bool CDVDDemuxFFmpeg::Open(CDVDInputStream* pInput)
     {
       SetError(GetErrorString(res));
       CLog::Log(LOGERROR, "%s - Error, could not open file %s", __FUNCTION__, strFile.c_str());
+      CLog::Log(LOGERROR, "%s - error: %s", __FUNCTION__, GetErrorString(res).c_str());
       Dispose();
       return false;
     }

@@ -136,6 +136,11 @@ static int amf_get_string(AVIOContext *ioc, char *buffer, int buffsize) {
     return length;
 }
 
+int ff_amf_get_string(AVIOContext *ioc, char *buffer, int buffsize)
+{
+    return amf_get_string(ioc, buffer, buffsize);
+}
+
 static int parse_keyframes_index(AVFormatContext *s, AVIOContext *ioc, AVStream *vstream, int64_t max_pos) {
     unsigned int timeslen = 0, fileposlen = 0, i;
     char str_val[256];

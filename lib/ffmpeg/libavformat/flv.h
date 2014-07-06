@@ -28,6 +28,8 @@
 #ifndef AVFORMAT_FLV_H
 #define AVFORMAT_FLV_H
 
+#include "avio.h"
+
 /* offsets for packed values */
 #define FLV_AUDIO_SAMPLESSIZE_OFFSET 1
 #define FLV_AUDIO_SAMPLERATE_OFFSET  2
@@ -130,5 +132,7 @@ typedef enum {
     AMF_DATA_TYPE_LONG_STRING = 0x0c,
     AMF_DATA_TYPE_UNSUPPORTED = 0x0d,
 } AMFDataType;
+
+int ff_amf_get_string(AVIOContext *ioc, char *buffer, int buffsize);
 
 #endif /* AVFORMAT_FLV_H */

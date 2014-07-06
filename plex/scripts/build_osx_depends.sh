@@ -40,11 +40,11 @@ else
 fi
 outputpath=$ROOT/plex/Dependencies/xbmc-depends/$outputdir
 
-echo $outputpath
-cd $DEPENDDIR
-./bootstrap
-./configure --with-sdk=10.8 --with-rootpath=$ROOT/plex/Dependencies/xbmc-depends --with-toolchain=/Users/Shared/xbmc-depends/toolchain --with-darwin=$darwin --with-arch=$arch
-make || exit 1
+#echo $outputpath
+#cd $DEPENDDIR
+#./bootstrap
+#./configure --with-sdk=10.8 --with-rootpath=$ROOT/plex/Dependencies/xbmc-depends --with-toolchain=/Users/Shared/xbmc-depends/toolchain --with-darwin=$darwin --with-arch=$arch
+#make || exit 1
 
 cd $ROOT
 
@@ -75,17 +75,17 @@ config="$config --enable-protocol=http --enable-runtime-cpudetect --enable-gnutl
 config="$config --prefix=$ROOT/plex/Dependencies/xbmc-depends/ffmpeg-$outputdir"
 config="$config --cc=clang"
 
-extra_cflags="$extra_cflags -I$outputpath/include"
+extra_cflags="$extra_cflags -I$outputpath/include -I/usr/local/opt/libxml2/include/libxml2"
 
 #GNUTLS only uses pkg-config, we need to export this for it to work
 export PKG_CONFIG_PATH="$outputpath/lib/pkgconfig:$PKG_CONFIG_PATH"
 
 #echo $config
-echo ./configure $config --as="$AS" --extra-cflags="$extra_cflags" --extra-ldflags="-arch $arch -L$outputpath/lib"
-./configure $config --as="$AS" --extra-cflags="$extra_cflags" --extra-ldflags="$LDFLAGS -arch $arch -L$outputpath/lib" || exit 1
+echo ./configure $config --as="$AS" --extra-cflags="$extra_cflags" --extra-ldflags="-arch $arch -L$outputpath/lib -L/usr/local/opt/libxml2/lib"
+./configure $config --as="$AS" --extra-cflags="$extra_cflags" --extra-ldflags="$LDFLAGS -arch $arch -L$outputpath/lib -L/usr/local/opt/libxml2/lib" || exit 1
 
-sed -ie "s#YASM=yasm#YASM=${outputpath}/bin/yasm#" config.mak
-sed -ie "s#YASMDEP=yasm#YASMDEP=${outputpath}/bin/yasm#" config.mak
+#sed -ie "s#YASM=yasm#YASM=${outputpath}/bin/yasm#" config.mak
+#sed -ie "s#YASMDEP=yasm#YASMDEP=${outputpath}/bin/yasm#" config.mak
 sed -ie "s# -D_ISOC99_SOURCE -D_POSIX_C_SOURCE=200112 # #" config.mak
 
 make || exit 1
@@ -113,9 +113,9 @@ for l in $libs; do
   codesign --force --sign "Developer ID Application: Plex Inc." $l
 done
 
-echo "Packing xbmc-depends"
-echo gtar --xz -cf $DEPDIR/built-depends/$outputdir-xbmc-$DEPEND_HASH.tar.xz $outputdir
-gtar --xz -cf $DEPDIR/built-depends/$outputdir-xbmc-$DEPEND_HASH.tar.xz $outputdir
+#echo "Packing xbmc-depends"
+#echo gtar --xz -cf $DEPDIR/built-depends/$outputdir-xbmc-$DEPEND_HASH.tar.xz $outputdir
+#gtar --xz -cf $DEPDIR/built-depends/$outputdir-xbmc-$DEPEND_HASH.tar.xz $outputdir
 
 echo "Packing symbols"
 echo gtar -cf $DEPDIR/built-depends/$outputdir-xbmc-symbols-$DEPEND_HASH.tar symbols-$outputdir
